@@ -25,7 +25,7 @@ The study highlights the critical role of institutional checks on executive powe
 
 ## 🛠️ Tools & Methodology
 
-- Language: Python / R (specify)
+- Language: R
 - Panel Data Modeling (e.g., `lme4`, `plm`, `linearmodels`, etc.)
 - Data Sources:
   - [V-Dem Dataset](https://www.v-dem.net/)
