@@ -1,1 +1,481 @@
+rm(list = ls())
+
+setwd("~/Desktop/Project MULTILEVEL")
+data = readRDS("V-Dem-CY-Full+Others-v15.rds")
+
+library(tidyverse)
+library(panelr)
+library(foreign)
+library(ggplot2)
+library(haven)  # Carica il pacchetto
+
+data_merged <- read_dta("vdem_merged_full.dta")
+
+# VERIFICA STATI EUROPEI -----
+# Estrai i paesi unici dal dataset
+# SOno 27 gli stati
+eu_member_states <- c(
+  "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus",
+  "Czech Republic", "Denmark", "Estonia", "Finland", "France",
+  "Germany", "Greece", "Hungary", "Ireland", "Italy",
+  "Latvia", "Lithuania", "Luxembourg", "Malta", "Netherlands",
+  "Poland", "Portugal", "Romania", "Slovakia", "Slovenia",
+  "Spain", "Sweden"
+)
+
+stati_presenti <- unique(data_merged$countryname)
+
+# Verifica quali stati UE sono presenti nel dataset
+stati_ue_presenti <- intersect(eu_member_states, stati_presenti)
+
+# Stati UE mancanti
+stati_ue_mancanti <- setdiff(eu_member_states, stati_presenti)
+
+
+# NON consideriamo la Slovacchia perchè i dati sul GDP ci sono solo a 
+# partire al 1990 (faceva parte dell'unione sovietica)
+
+
+# CREAZIONE DATASET a partire da quello V Dem e quello pwt1001.xlsx ----
+#
+# L'idea è quella di considerare tutti e 26 stati EU (esclusa Slovacchia) 
+# a partire dal 1960 e fondere i due dataset V Dem m e pwt1001.xlsx
+# per avere Real GDP e  merged_data
+# in maniera da avere l'info su "Income group"
+
+
+library(tidyverse)
+
+eu_consider_data <- c(
+  "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus",
+  "Czech Republic", "Denmark", "Estonia", "Finland", "France",
+  "Germany", "Greece", "Hungary", "Ireland", "Italy",
+  "Latvia", "Lithuania", "Luxembourg", "Malta", "Netherlands",
+  "Poland", "Portugal", "Romania", "Slovakia", "Slovenia",
+  "Spain", "Sweden"
+)
+
+
+dataset_econ = data_merged %>% filter(countryname %in% eu_consider_data) %>% 
+  filter(year >= 1960) %>% 
+  select("countryname", "year" ,"rgdpe", "Incomegroup")
+
+dim(table(dataset_econ$countryname))
+# In questo dataset non c'è la Slovacchia
+
+dataset_dem = data %>% filter(country_name %in% eu_consider_data) %>% 
+  filter(year >= 1960 & year <= 2010) %>% 
+  select("country_name", "year" ,"v2x_freexp_altinf", "v2x_regime",
+         "v2regdur", "v2exrescon", "v2ex_elechog", "v2ex_hogw",
+         "v2lgcrrpt", "v2x_corr")
+
+dim(dataset_econ)
+dim(dataset_dem)
+dim(table(dataset_dem$country_name == "Slovakia"))
+
+
+# Eliminiamo quelle nazione per cui non abbiamo tutti i dati per tutti gli anni
+# dal 1960 al 2010
+
+
+dataset_econ = dataset_econ %>% filter(!countryname %in% c("Estonia", "Latvia", "Lithuania", 
+                                          "Slovenia", "Croatia","Czech Republic" ))
+table(dataset_econ$countryname)
+
+dataset_dem = dataset_dem %>% filter(!country_name %in% c("Estonia", "Latvia", "Lithuania", 
+                                                           "Slovenia", "Croatia", "Slovakia"))
+table(dataset_dem$country_name)
+
+
+# Unione dataset
+dataset_econ = dataset_econ %>% rename(country_name = countryname)
+
+
+dataset_final = dataset_dem %>% left_join(dataset_econ, by = c("country_name", "year"))
+View(dataset_final)
+
+
+# ANALISI DECRITTIVE ----
+dataset_final$v2x_regime = factor(dataset_final$v2x_regime)
+dataset_final$v2ex_hogw = factor(dataset_final$v2ex_hogw)
+
+
+# Make graphical presentation
+data_panel <- panel_data(dataset_final, id = country_name, wave = year) # declare data as panel data (needs panelr package)
+# Adding colours, a legend, caption, labels, etc. 
+line_plot(data_panel, v2x_freexp_altinf) + labs(x="Year", y="Freedom of expression", title="Freedom of expression, 1960-2010 ", 
+                                caption="Source: V-Democracy Project") + 
+  geom_line(aes(color=country_name)) + 
+  geom_point(aes(color=country_name), size = 1.5)
+
+
+# Tranform to wide format
+data_wide <- widen_panel(data_panel)
+# Correlation matrix
+cor(data_wide[c("v2x_freexp_altinf_1960", "v2x_freexp_altinf_1970", "v2x_freexp_altinf_1980",
+                "v2x_freexp_altinf_1990", "v2x_freexp_altinf_2000", "v2x_freexp_altinf_2010",
+                "v2x_freexp_altinf_1961", "v2x_freexp_altinf_1971", "v2x_freexp_altinf_1981",
+                "v2x_freexp_altinf_1991", "v2x_freexp_altinf_2001", "v2x_freexp_altinf_2009",
+                "v2x_freexp_altinf_1962", "v2x_freexp_altinf_1972", "v2x_freexp_altinf_1982",
+                "v2x_freexp_altinf_1992", "v2x_freexp_altinf_2002", "v2x_freexp_altinf_2008")])
+
+library(ggplot2)
+library(reshape2) # Per convertire la matrice in un formato adatto a ggplot2
+
+# Calcola la matrice di correlazione
+matrice_correlazione <- cor(data_wide[c("v2x_freexp_altinf_1960", "v2x_freexp_altinf_1965", "v2x_freexp_altinf_1970",
+                                        "v2x_freexp_altinf_1975", "v2x_freexp_altinf_1980", "v2x_freexp_altinf_1985",
+                                        "v2x_freexp_altinf_1990", "v2x_freexp_altinf_1995", "v2x_freexp_altinf_2000",
+                                        "v2x_freexp_altinf_2005", "v2x_freexp_altinf_2010")])
+
+# Crea un vettore con le nuove etichette
+nuove_etichette <- c("Freedom of expression 1960", "Freedom of expression 1965",
+                     "Freedom of expression 1970", "Freedom of expression 1975",
+                     "Freedom of expression 1980", "Freedom of expression 1985",
+                     "Freedom of expression 1990", "Freedom of expression 1995",
+                     "Freedom of expression 2000", "Freedom of expression 2005",
+                     "Freedom of expression 2010")
+
+# Assegna le nuove etichette ai nomi delle colonne e delle righe
+colnames(matrice_correlazione) <- nuove_etichette
+rownames(matrice_correlazione) <- nuove_etichette
+
+# Converti la matrice in un formato "long" per ggplot2
+dati_correlazione_melted <- melt(matrice_correlazione)
+
+# Crea la heatmap con ggplot2
+ggplot(data = dati_correlazione_melted, aes(x=Var1, y=Var2, fill=value)) +
+  geom_tile(color = "white") + # Aggiunge bordi bianchi tra le celle
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1,1), space = "Lab",
+                       name="Correlazione") +
+  theme_minimal() + # Tema minimalista
+  theme(axis.text.x = element_text(angle = 45, vjust = 1,
+                                   size = 8, hjust = 1),
+        axis.text.y = element_text(size = 8),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        legend.position = "right") +
+  coord_fixed() # Assicura che le celle siano quadrate
+
+# Aggiungi i valori di correlazione all'interno delle celle (opzionale)
+ggplot(data = dati_correlazione_melted, aes(x=Var1, y=Var2, fill=value, label = round(value, 2))) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1,1), space = "Lab",
+                       name="Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1,
+                                   size = 8, hjust = 1),
+        axis.text.y = element_text(size = 8),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        legend.position = "right") +
+  coord_fixed() +
+  geom_text(color = "black", size = 3)
+
+
+
+
+
+# Plotting the data at the country-level
+dataset_final %>%
+  group_by(country_name) %>%
+  summarise(
+    fre_mean=mean(v2x_freexp_altinf), 
+    res_mean=mean(v2exrescon)
+  ) %>%
+  ggplot(aes(x=res_mean, y=fre_mean)) + geom_point() + geom_smooth(method=lm) + 
+  labs(x="Executive respects costitution", y="Freedom of expression")                                
+
+
+
+# MODELLAZIONE ------
+library(plm)
+library(texreg)
+mod1 = lm(v2x_freexp_altinf ~  v2x_corr  +  v2exrescon +
+            v2x_regime + v2regdur  + v2ex_hogw  + Incomegroup, data = dataset_final)
+summary(mod1)
+
+####
+mod2 = lmer(v2x_freexp_altinf ~ 1 + (1|country_name), data = dataset_final)
+summary(mod2)
+0.04428/ (0.05627 + 0.04428)
+
+
+mod0 = lm(v2x_freexp_altinf ~  1, data = dataset_final)
+summary(mod0)
+
+
+
+#### ANOVA #####
+anova(mod2, mod0, test = "Chisq")
+
+
+
+
+####
+mod3 = lm(v2x_freexp_altinf ~ v2exrescon + factor(country_name), data = dataset_final)
+
+#mod4 = lm(v2x_freexp_altinf ~ v2exrescon , data = dataset_final)
+
+mod4 = plm(v2x_freexp_altinf ~ v2exrescon, data = data_panel, model = "within")
+summary(mod4)
+
+
+# Comparing all models
+screenreg(list(mod3, mod4), digits=4)
+
+
+mod5 = plm(v2x_freexp_altinf ~ v2exrescon + Incomegroup, data = data_panel, model = "random")
+summary(mod5)
+
+screenreg(list(mod4, mod5), digits=4)
+
+plmtest(mod5, type = "bp")
+
+phtest(mod4, mod5) 
+
+#####
+# Estimate within-between model by hand
+# Calculate mean and demeaned variables
+data_model <- dataset_final %>% group_by(country_name) %>% 
+  mutate(
+    v2exrescon_m = mean(v2exrescon, na.rm = TRUE),
+  ) %>% ungroup() %>% 
+  mutate(
+    v2exrescon_dm = v2exrescon-v2exrescon_m,
+  )
+
+
+# Estimate within between model by hand
+wb <- plm(v2x_freexp_altinf ~  v2exrescon_dm + v2exrescon_m + Incomegroup, 
+          data= data_model, model="random")
+summary(wb)
+
+# Estimate model with Mundlak specification
+mundlak <- plm(v2x_freexp_altinf ~  v2exrescon + v2exrescon_m + Incomegroup,
+               data=data_model, model="random")
+summary(mundlak)
+# -> Within and between effects of divorce are statistically different. 
+#    Speaks against RE model
+
+
+# Table of all estimates
+screenreg(list(mod4, mod5, wb, mundlak), 
+          custom.model.names = c("FE", "RE", "WB", "Mundlak"))
+
+
+
+
+
+# library(lme4)
+# mod0 = lmer(v2x_freexp_altinf ~  scale(v2x_corr)  +  
+              #(scale(v2x_regime)) + scale(v2regdur)  + scale(v2ex_hogw) + scale(rgdpe) + Incomegroup + (1  + v2exrescon |country_name),
+            #data = dataset_final)
+#summary(mod0)
+# Le uniche variabili NON significative sono durata regime e Income group
+
+
+
+
+
+
+
+
+# MODELLAZIONE GENERALE -----------
+
+whit = plm(v2x_freexp_altinf ~ v2exrescon + v2x_corr + 
+             v2x_regime + v2regdur  + v2ex_hogw  + Incomegroup, data = data_panel, model = "within")
+summary(whit)
+
+
+
+random = plm(v2x_freexp_altinf ~ v2exrescon + v2x_corr + 
+               v2x_regime + v2regdur  + v2ex_hogw  + Incomegroup, 
+             data = data_panel, model = "random")
+summary(random)
+
+round(coef(random),2)
+
+
+
+
+
+
+## Trasformazione dummy 
+df_dummies <- data_panel %>%
+  mutate(
+    # Convertiamo i factor in character (per sicurezza)
+    v2x_regime = as.character(v2x_regime),
+    v2ex_hogw = as.character(v2ex_hogw)
+  ) %>%
+  # 2. Creiamo dummy (trattiamo la prima categoria come base)
+  mutate(
+    regime_1 = if_else(v2x_regime == "1", 1, 0),
+    regime_2 = if_else(v2x_regime == "2", 1, 0),
+    regime_3 = if_else(v2x_regime == "3", 1, 0),
+    
+    hogw_0.5 = if_else(v2ex_hogw == "0.5", 1, 0),
+    hogw_1 = if_else(v2ex_hogw == "1", 1, 0)
+    # le categorie "0" sono la base
+  )
+
+# 3. Calcolo delle medie individuali (componenti between)
+medie_between <- df_dummies %>%
+  group_by(country_name) %>%
+  summarise(
+    m_regime_1 = mean(regime_1),
+    m_regime_2 = mean(regime_2),
+    m_regime_3 = mean(regime_3),
+    m_hogw_0.5 = mean(hogw_0.5),
+    m_hogw_1 = mean(hogw_1)
+  )
+
+
+library(tidyverse)
+
+data_model2 <- dataset_final %>%
+  # 1. Creazione dummy per le variabili categoriche
+  mutate(
+    regime_1 = if_else(v2x_regime == "1", 1, 0),
+    regime_2 = if_else(v2x_regime == "2", 1, 0),
+    regime_3 = if_else(v2x_regime == "3", 1, 0),
+    hogw_0.5 = if_else(v2ex_hogw == "0.5", 1, 0),
+    hogw_1   = if_else(v2ex_hogw == "1", 1, 0)
+    # "0" è la base in entrambi i casi
+  ) %>%
+  
+  # 2. Calcolo delle medie (between) per ciascun paese
+  group_by(country_name) %>%
+  mutate(
+    v2exrescon_m = mean(v2exrescon, na.rm = TRUE),
+    v2x_corr_m   = mean(v2x_corr, na.rm = TRUE),
+    v2regdur_m   = mean(v2regdur, na.rm = TRUE),
+    m_regime_1 = mean(regime_1, na.rm = TRUE),
+    m_regime_2 = mean(regime_2, na.rm = TRUE),
+    m_regime_3 = mean(regime_3, na.rm = TRUE),
+    m_hogw_0.5 = mean(hogw_0.5, na.rm = TRUE),
+    m_hogw_1   = mean(hogw_1, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  
+  # 3. Calcolo delle componenti within (differenza dalla media individuale)
+  mutate(
+    v2exrescon_dm = v2exrescon - v2exrescon_m,
+    v2x_corr_dm   = v2x_corr - v2x_corr_m,
+    v2regdur_dm   = v2regdur - v2regdur_m,
+    
+    # Per le dummy
+    w_regime_1 = regime_1 - m_regime_1,
+    w_regime_2 = regime_2 - m_regime_2,
+    w_regime_3 = regime_3 - m_regime_3,
+    w_hogw_0.5 = hogw_0.5 - m_hogw_0.5,
+    w_hogw_1   = hogw_1 - m_hogw_1
+  )
+
+
+# Estimate within between model by hand
+wb2 <- plm(v2x_freexp_altinf ~  v2exrescon_m + v2exrescon_dm + v2x_corr_m + v2x_corr_dm +
+             v2regdur_m + v2regdur_dm + m_regime_1 + w_regime_1 + m_regime_2 + w_regime_2 +
+             m_regime_3 + w_regime_3 + m_hogw_0.5 + w_hogw_0.5 +
+             m_hogw_1 + w_hogw_1 + Incomegroup, 
+          data = data_model2, model="random")
+
+summary(wb2)
+data_panel3 = cbind(data_model2, dataset_final$v2x_regime, dataset_final$v2ex_hogw)
+names(data_panel3)[names(data_panel3) == "dataset_final$v2x_regime"]  = "v2x_regime"
+names(data_panel3)[names(data_panel3) == "dataset_final$v2ex_hogw"]  = "v2ex_hogw"
+
+
+
+# Estimate model with Mundlak specification
+mundlak2 <- plm(v2x_freexp_altinf ~  v2exrescon + v2exrescon_m + v2x_corr_m + v2x_corr +
+                  v2regdur_m + v2regdur + m_regime_1 + v2x_regime + m_regime_2  +
+                  m_regime_3  + m_hogw_0.5 + v2ex_hogw +
+                  m_hogw_1  + Incomegroup,
+               data=data_panel3, model="random")
+summary(mundlak2)
+# -> Within and between effects of divorce are statistically different. 
+#    Speaks against RE model
+
+phtest(whit, random)
+
+screenreg(list(whit, random, wb2, mundlak2), 
+          custom.model.names = c("FE", "RE", "WB", "Mundlak"))
+
+round(confint(whit, level = 0.95),4) 
+round(confint(random, level = 0.95),4) 
+round(confint(wb2, level = 0.95),4) 
+round(confint(mundlak2, level = 0.95),4) 
+
+#############################################################################
+
+# togli hogw and income group
+
+
+whit3 = plm(v2x_freexp_altinf ~ v2exrescon + v2x_corr + 
+             v2x_regime + v2regdur , data = data_panel, model = "within")
+
+
+
+random3 = plm(v2x_freexp_altinf ~ v2exrescon + v2x_corr + 
+               v2x_regime + v2regdur, 
+             data = data_panel, model = "random")
+
+wb3 <- plm(v2x_freexp_altinf ~  v2exrescon_m + v2exrescon_dm + v2x_corr_m + v2x_corr_dm +
+             v2regdur_m + v2regdur_dm + m_regime_1 + w_regime_1 + m_regime_2 + w_regime_2 +
+             m_regime_3 + w_regime_3 , 
+           data = data_model2, model="random")
+
+# Estimate model with Mundlak specification
+mundlak3 <- plm(v2x_freexp_altinf ~  v2exrescon + v2exrescon_m + v2x_corr_m + v2x_corr +
+                  v2regdur_m + v2regdur + m_regime_1 + v2x_regime + m_regime_2  +
+                  m_regime_3 ,
+                data=data_panel3, model="random")
+
+
+screenreg(list(whit3, random3, wb3, mundlak3), 
+          custom.model.names = c("FE", "RE", "WB", "Mundlak"))
+
+
+
+
+
+
+
+
+# CROSS LEVEL INTERACTIONS + RANDOM INTERCEPT  -----
+wb_income <- lmer(v2x_freexp_altinf ~  
+                   v2exrescon_dm * Incomegroup +  # cross-level interaction
+                   v2exrescon_m * Incomegroup + (1 + v2exrescon_dm | country_name),     # main effects
+                 data = data_model)
+summary(wb_income)
+
+
+#wb <- plm(v2x_freexp_altinf ~  v2exrescon_dm + v2exrescon_m + Incomegroup, 
+          #data= data_model, model="random")
+#summary(wb)
+
+
+mundlak_income <- lmer(v2x_freexp_altinf ~  
+                        v2exrescon * Incomegroup +  # interaction with raw variable
+                        v2exrescon_m * Incomegroup + (1 + v2exrescon_dm | country_name), # main effects
+                      data = data_model)
+summary(mundlak_income)
+
+
+#mundlak <- plm(v2x_freexp_altinf ~  v2exrescon + v2exrescon_m + Incomegroup,
+               #data=data_model, model="random")
+#summary(mundlak)
+
+screenreg(list(wb_income, mundlak_income), 
+          custom.model.names = c("WB Income", "Mundlack Income"))
+
 
