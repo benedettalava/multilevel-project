@@ -32,5 +32,5 @@ The study highlights the critical role of institutional checks on executive powe
   - [Penn World Table](https://www.rug.nl/ggdc/productivity/pwt/)
   - Other supplementary sources
 
-## 📁 Project Structure
+
 
